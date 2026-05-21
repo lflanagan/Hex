@@ -264,9 +264,13 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
     // If already transcribing, cancel first. Otherwise start recording immediately.
-    let maybeCancel = isTranscribing ? Effect.send(Action.cancel) : .none
-    let startRecording = Effect.send(Action.startRecording)
-    return .merge(maybeCancel, startRecording)
+    if isTranscribing {
+      return .concatenate(
+        .send(.cancel),
+        .send(.startRecording)
+      )
+    }
+    return .send(.startRecording)
   }
 
   func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
@@ -528,6 +532,7 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
+    let wasRecording = state.isRecording
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
@@ -537,10 +542,12 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        // Stop the recording to release microphone access
-        let url = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
+        if wasRecording {
+          // Stop the recording to release microphone access
+          let url = await recording.stopRecording()
+          guard !Task.isCancelled else { return }
+          try? FileManager.default.removeItem(at: url)
+        }
         soundEffect.play(.cancel)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)

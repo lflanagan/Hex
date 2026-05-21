@@ -982,6 +982,12 @@ actor RecordingClientLive {
     let clampedTarget = Float(HexSettings.clampVolume(targetVolume))
     let currentVolume = getSystemVolume()
     guard currentVolume > clampedTarget + 0.005 else {
+      if adoptCurrentVolumeForRecording(sessionID: sessionID) {
+        mediaLogger.notice(
+          "Keeping recording volume duck at \(String(format: "%.2f", currentVolume)); target is \(String(format: "%.2f", clampedTarget))"
+        )
+        return
+      }
       mediaLogger.notice(
         "Keeping system volume at \(String(format: "%.2f", currentVolume)); target is \(String(format: "%.2f", clampedTarget))"
       )
@@ -992,6 +998,19 @@ actor RecordingClientLive {
     mediaLogger.notice(
       "Reduced system volume to \(String(format: "%.2f", clampedTarget)) (was \(String(format: "%.2f", currentVolume)))"
     )
+  }
+
+  private func adoptCurrentVolumeForRecording(sessionID: UUID) -> Bool {
+    guard recordingSessionID == sessionID, previousVolume != nil, volumeFadeTask != nil else {
+      return false
+    }
+
+    volumeFadeTask?.cancel()
+    volumeFadeTask = nil
+    let generation = advanceVolumeControlGeneration()
+    lastAppliedRecordingVolume = getSystemVolume()
+    startRecordingVolumeMonitor(sessionID: sessionID, generation: generation)
+    return true
   }
 
   /// Restores system volume to the specified level

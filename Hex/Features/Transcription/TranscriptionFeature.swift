@@ -532,7 +532,6 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
-    let wasRecording = state.isRecording
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
@@ -542,12 +541,10 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        if wasRecording {
-          // Stop the recording to release microphone access
-          let url = await recording.stopRecording()
-          guard !Task.isCancelled else { return }
-          try? FileManager.default.removeItem(at: url)
-        }
+        // Stop the recording to release microphone access
+        let url = await recording.stopRecording()
+        guard !Task.isCancelled else { return }
+        try? FileManager.default.removeItem(at: url)
         soundEffect.play(.cancel)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)

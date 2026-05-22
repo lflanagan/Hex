@@ -1001,7 +1001,7 @@ actor RecordingClientLive {
   }
 
   private func adoptCurrentVolumeForRecording(sessionID: UUID) -> Bool {
-    guard recordingSessionID == sessionID, previousVolume != nil, volumeFadeTask != nil else {
+    guard recordingSessionID == sessionID, previousVolume != nil else {
       return false
     }
 
@@ -1026,6 +1026,8 @@ actor RecordingClientLive {
     )
     if rampGeneration != nil {
       recordingLogger.notice("Restoring system volume to \(String(format: "%.2f", volume))")
+    } else {
+      clearVolumeRestoreState(expectedVolume: volume)
     }
   }
 
@@ -1172,7 +1174,12 @@ actor RecordingClientLive {
 
       let progress = Float(step) / Float(stepCount)
       let volume = startVolume + ((targetVolume - startVolume) * progress)
-      guard setSystemVolumeAndTrack(volume) else { return }
+      guard setSystemVolumeAndTrack(volume) else {
+        if let clearRestoreVolume {
+          finishVolumeRestore(expectedVolume: clearRestoreVolume, generation: generation)
+        }
+        return
+      }
 
       if step < stepCount {
         try? await Task.sleep(for: .milliseconds(Int((stepInterval * 1000).rounded())))
@@ -1188,6 +1195,14 @@ actor RecordingClientLive {
 
   private func finishVolumeRestore(expectedVolume: Float, generation: UInt64) {
     guard volumeControlGeneration == generation else { return }
+    if previousVolume == expectedVolume {
+      previousVolume = nil
+    }
+    lastAppliedRecordingVolume = nil
+    volumeFadeTask = nil
+  }
+
+  private func clearVolumeRestoreState(expectedVolume: Float) {
     if previousVolume == expectedVolume {
       previousVolume = nil
     }
